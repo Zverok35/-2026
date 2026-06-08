@@ -1,0 +1,270 @@
+// Model.java
+import java.util.*;
+import java.io.*;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptEngine;
+import javax.script.ScriptException;
+
+class CalculatorModel {
+    private List<String> history = new ArrayList<>();
+    private List<String> results = new ArrayList<>();
+    private File historyFile;
+
+    public CalculatorModel() {
+        loadHistoryFromFile();
+    }
+
+    public String evaluateExpression(String expression) {
+        try {
+            String processed = expression.replace("**", "^").replace("//", "/").replace("%", "%");
+            Object result = evaluateWithScript(processed);
+            String resultStr = result.toString();
+            saveToHistory(expression, resultStr);
+            return resultStr;
+        } catch (Exception e) {
+            return "Ошибка: некорректное выражение";
+        }
+    }
+
+    private Object evaluateWithScript(String expr) throws ScriptException {
+        ScriptEngineManager manager = new ScriptEngineManager();
+        ScriptEngine engine = manager.getEngineByName("JavaScript");
+        expr = expr.replace("^", "**");
+        return engine.eval(expr);
+    }
+
+    private void saveToHistory(String equation, String result) {
+        history.add(equation);
+        results.add(result);
+        saveHistoryToFile();
+    }
+
+    public List<String> getHistory() {
+        List<String> fullHistory = new ArrayList<>();
+        for (int i = 0; i < history.size(); i++) {
+            fullHistory.add(history.get(i) + " = " + results.get(i));
+        }
+        return fullHistory;
+    }
+
+    public void saveHistoryToFile() {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(historyFile != null ? historyFile : new File("history.log")))) {
+            for (int i = 0; i < history.size(); i++) {
+                writer.println(history.get(i) + " = " + results.get(i));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadHistoryFromFile() {
+        File defaultFile = new File("history.log");
+        if (defaultFile.exists()) {
+            historyFile = defaultFile;
+            try (BufferedReader reader = new BufferedReader(new FileReader(defaultFile))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] parts = line.split(" = ");
+                    if (parts.length == 2) {
+                        history.add(parts[0]);
+                        results.add(parts[1]);
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void setHistoryFile(String path, String filenameWithExt) {
+        try {
+            File file;
+            if (path != null && !path.isEmpty()) {
+                if (filenameWithExt != null && !filenameWithExt.isEmpty()) {
+                    file = new File(path, filenameWithExt);
+                } else {
+                    file = new File(path, "log.log");
+                }
+            } else if (filenameWithExt != null && !filenameWithExt.isEmpty()) {
+                file = new File(filenameWithExt);
+            } else {
+                file = new File("history.log");
+            }
+            historyFile = file;
+            saveHistoryToFile();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getCurrentFilePath() {
+        return historyFile != null ? historyFile.getAbsolutePath() : new File("history.log").getAbsolutePath();
+    }
+
+    public void saveSelectedToFile(List<Integer> indices, String path, String filename) {
+        try {
+            File file;
+            if (path != null && !path.isEmpty()) {
+                if (filename != null && !filename.isEmpty()) {
+                    file = new File(path, filename);
+                } else {
+                    file = new File(path, "log.log");
+                }
+            } else if (filename != null && !filename.isEmpty()) {
+                file = new File(filename);
+            } else {
+                file = new File("selected_history.log");
+            }
+
+            try (PrintWriter writer = new PrintWriter(new FileWriter(file))) {
+                for (int idx : indices) {
+                    if (idx >= 0 && idx < history.size()) {
+                        writer.println(history.get(idx) + " = " + results.get(idx));
+                    }
+                }
+            }
+            System.out.println("Сохранено в: " + file.getAbsolutePath());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+// View.java
+import java.util.List;
+import java.util.Scanner;
+
+class CalculatorView {
+    private Scanner scanner = new Scanner(System.in);
+
+    public void showMenu() {
+        System.out.println("\n=== КАЛЬКУЛЯТОР MVC ===");
+        System.out.println("1. Вычислить выражение");
+        System.out.println("2. Показать историю");
+        System.out.println("3. Сохранить историю в файл");
+        System.out.println("4. Сохранить выбранные уравнения в файл");
+        System.out.println("5. Указать файл для сохранения истории");
+        System.out.println("6. Выход");
+        System.out.print("Выберите действие: ");
+    }
+
+    public String getExpression() {
+        System.out.print("Введите выражение: ");
+        return scanner.nextLine();
+    }
+
+    public void showResult(String result) {
+        System.out.println("Результат: " + result);
+    }
+
+    public void showHistory(List<String> history) {
+        if (history.isEmpty()) {
+            System.out.println("История пуста.");
+        } else {
+            System.out.println("\n=== ИСТОРИЯ ВЫЧИСЛЕНИЙ ===");
+            for (int i = 0; i < history.size(); i++) {
+                System.out.println((i + 1) + ". " + history.get(i));
+            }
+        }
+    }
+
+    public void showMessage(String message) {
+        System.out.println(message);
+    }
+
+    public String getFilePath() {
+        System.out.print("Введите путь для сохранения (или оставьте пустым для текущей папки): ");
+        return scanner.nextLine();
+    }
+
+    public String getFilename() {
+        System.out.print("Введите имя файла с расширением (txt, log, md) (или оставьте пустым): ");
+        return scanner.nextLine();
+    }
+
+    public int[] getSelectedIndices(int max) {
+        System.out.print("Введите номера уравнений через запятую (1-" + max + "): ");
+        String input = scanner.nextLine();
+        String[] parts = input.split(",");
+        int[] indices = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            indices[i] = Integer.parseInt(parts[i].trim()) - 1;
+        }
+        return indices;
+    }
+
+    public int getIntInput() {
+        return Integer.parseInt(scanner.nextLine());
+    }
+}
+
+// Controller.java
+import java.util.*;
+
+class CalculatorController {
+    private CalculatorModel model;
+    private CalculatorView view;
+
+    public CalculatorController(CalculatorModel model, CalculatorView view) {
+        this.model = model;
+        this.view = view;
+    }
+
+    public void run() {
+        while (true) {
+            view.showMenu();
+            int choice = view.getIntInput();
+            switch (choice) {
+                case 1:
+                    String expr = view.getExpression();
+                    String result = model.evaluateExpression(expr);
+                    view.showResult(result);
+                    break;
+                case 2:
+                    view.showHistory(model.getHistory());
+                    break;
+                case 3:
+                    model.saveHistoryToFile();
+                    view.showMessage("История сохранена в: " + model.getCurrentFilePath());
+                    break;
+                case 4:
+                    List<String> history = model.getHistory();
+                    if (history.isEmpty()) {
+                        view.showMessage("Нет уравнений для сохранения.");
+                        break;
+                    }
+                    view.showHistory(history);
+                    int[] selected = view.getSelectedIndices(history.size());
+                    List<Integer> selectedList = new ArrayList<>();
+                    for (int idx : selected) selectedList.add(idx);
+                    String path = view.getFilePath();
+                    String filename = view.getFilename();
+                    model.saveSelectedToFile(selectedList, path.isEmpty() ? null : path, filename.isEmpty() ? null : filename);
+                    view.showMessage("Выбранные уравнения сохранены.");
+                    break;
+                case 5:
+                    String fpath = view.getFilePath();
+                    String fname = view.getFilename();
+                    model.setHistoryFile(fpath.isEmpty() ? null : fpath, fname.isEmpty() ? null : fname);
+                    view.showMessage("Файл истории установлен: " + model.getCurrentFilePath());
+                    break;
+                case 6:
+                    view.showMessage("До свидания!");
+                    System.exit(0);
+                    break;
+                default:
+                    view.showMessage("Неверный выбор.");
+            }
+        }
+    }
+}
+
+// Main.java
+public class Main {
+    public static void main(String[] args) {
+        CalculatorModel model = new CalculatorModel();
+        CalculatorView view = new CalculatorView();
+        CalculatorController controller = new CalculatorController(model, view);
+        controller.run();
+    }
+}
